@@ -1,6 +1,6 @@
 from team import Team
 from player import Player
-from CRUD import CRUDContainer
+from CRUDContiner import CRUDContainer
 
 class PlayerTeam(CRUDContainer):
     def __init__(self, team: Team = None, players: list[Player] = None, fecha_union: str = None):
