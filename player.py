@@ -1,4 +1,4 @@
-from CRUD import CRUDContainer
+from CRUDContiner import CRUDContainer
 
 class Player(CRUDContainer):
     def __init__(self, name: str = None, apellido: str = None, edad: int = None, numero: int = None, nacionalidad: str = None):

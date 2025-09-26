@@ -1,4 +1,4 @@
-from CRUD import CRUDContainer
+from CRUDContiner import CRUDContainer
 
 class Team(CRUDContainer):
     def __init__(self, name: str = None, ciudad: str = None, fundacion: int = None, estadio: str = None, liga: str = None, entrenador: str = None):
