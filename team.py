@@ -9,12 +9,12 @@ class Team(CRUDContainer):
             self.estadio = estadio
             self.liga = liga
             self.entrenador = entrenador
-            self.is_array = False  
+            self.is_dict = False  
         else:
             super().__init__()
     
     def __str__(self):
-        if not self.is_array:
+        if not self.is_dict:
             return f"Equipo: {self.name}, Ciudad: {self.ciudad}, Fundación: {self.fundacion}, Estadio: {self.estadio}, Liga: {self.liga}, Entrenador: {self.entrenador}"
         else:
             return f"Team Container with {self.size()} teams"
