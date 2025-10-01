@@ -8,12 +8,12 @@ class Player(CRUDContainer):
             self.edad = edad
             self.numero = numero
             self.nacionalidad = nacionalidad
-            self.is_array = False 
+            self.is_dict = False 
         else:
             super().__init__()
     
     def __str__(self):
-        if not self.is_array:
+        if not self.is_dict:
             return f"Jugador: {self.name} {self.apellido}, Edad: {self.edad}, Numero: {self.numero}, Nacionalidad: {self.nacionalidad}"
         else:
             return f"Player Container with {self.size()} players"
