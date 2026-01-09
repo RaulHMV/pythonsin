@@ -1,21 +1,32 @@
 import importlib
 from jugadores import Jugador
+from mongo import Mongo, iniciar_tarea_periodica
 
-class MenuJugador:
-    def __init__(self,jugadores=None):
+class MenuJugador(Jugador):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mongo = Mongo()
+        iniciar_tarea_periodica(self.mongo)
 
-
-        self.lista = Jugador()
-        self.cargar_datos_existentes()
+        if self.is_array:
+            self.cargar_datos_existentes()
     
-    def cargar_datos_existentes(`self`):
+    def cargar_datos_existentes(self):
         try:
-            self.lista = self.lista.leerJson()
-            print(f"Se cargaron {len(self.lista.items)} jugadores existentes.\n")
-        except FileNotFoundError:
-            print("No hay datos previos. Empezando desde cero.\n")
+            # Usamos insert_general para sincronizar
+            # insert_general(lista_obj, nameArchivo, collection, clase)
+            # Devuelve un objeto Jugador con los items cargados
+            data = self.mongo.insert_general(self, "jugadores.json", "jugadores", Jugador)
+            self.items = data.items
+            print(f"Se cargaron {len(self.items)} jugadores existentes.\n")
         except Exception as e:
-            print(f"Error: {e}\n")
+            print(f"Error cargando datos: {e}\n")
+            # Fallback a local si falla algo critico en mongo
+            try:
+                data = self.leerJson()
+                self.items = data.items
+            except:
+                pass
     
     def menu(self):
         while True:
@@ -40,7 +51,7 @@ class MenuJugador:
             elif opcion == "4":
                 self.eliminar_jugador()
             elif opcion == "5":
-                self.lista.guardarJson()
+                self.guardarJson()
                 print("Guardado. Adios!")
                 break
             else:
@@ -51,69 +62,114 @@ class MenuJugador:
         
         nombre = input("Nombre: ").strip()
         apellido = input("Apellido: ").strip()
-        edad = int(input("Edad: "))
-        numero = int(input("Numero: "))
+        while True:
+            try:
+                edad = int(input("Edad: "))
+                break
+            except ValueError:
+                print("Por favor ingresa un numero valido para la edad.")
+        
+        while True:
+            try:
+                numero = int(input("Numero: "))
+                break
+            except ValueError:
+                print("Por favor ingresa un numero valido para el numero.")
         nacionalidad = input("Nacionalidad: ").strip()
         
         jugador = Jugador(nombre, apellido, edad, numero, nacionalidad)
-        self.lista.agregar(jugador)
+        self.agregar(jugador)
+        
+        if self.mongo.hay_internet():
+            self.mongo.insert("jugadores", jugador.to_dict())
+        else:
+            self.guardarJson()
+            
         print(f"\n{nombre} {apellido} agregado correctamente")
     
     def ver_jugadores(self):
         print("\n--- LISTA DE JUGADORES ---")
-        if len(self.lista.items) == 0:
+        if len(self.items) == 0:
             print("No hay jugadores registrados.")
             return
         
-        for i, j in enumerate(self.lista.items):
+        for i, j in enumerate(self.items):
             print(f"{i}. {j.nombre} {j.apellido} - Edad: {j.edad}, Numero: #{j.numero}, Nacionalidad: {j.nacionalidad}")
     
     def actualizar_jugador(self):
         print("\n--- ACTUALIZAR JUGADOR ---")
         
-        if len(self.lista.items) == 0:
+        if len(self.items) == 0:
             print("No hay jugadores para actualizar.")
             return
         
         self.ver_jugadores()
         
         idx = int(input("\nSelecciona el numero del jugador a actualizar: "))
-        if idx < 0 or idx >= len(self.lista.items):
+        if idx < 0 or idx >= len(self.items):
             print("Indice invalido")
             return
         
-        print(f"\nActualizando: {self.lista.items[idx].nombre} {self.lista.items[idx].apellido}")
+        print(f"\nActualizando: {self.items[idx].nombre} {self.items[idx].apellido}")
         print("Ingresa los nuevos datos:")
         
         nombre = input("Nombre: ").strip()
         apellido = input("Apellido: ").strip()
-        edad = int(input("Edad: "))
-        numero = int(input("Numero: "))
+        while True:
+            try:
+                edad = int(input("Edad: "))
+                break
+            except ValueError:
+                print("Por favor ingresa un numero valido para la edad.")
+        
+        while True:
+            try:
+                numero = int(input("Numero: "))
+                break
+            except ValueError:
+                print("Por favor ingresa un numero valido para el numero.")
         nacionalidad = input("Nacionalidad: ").strip()
         
         nuevo_jugador = Jugador(nombre, apellido, edad, numero, nacionalidad)
-        self.lista.actualizar(idx, nuevo_jugador)
+        
+        jugador_anterior = self.items[idx]
+        query = jugador_anterior.to_dict()
+        
+        self.actualizar(idx, nuevo_jugador)
+        
+        if self.mongo.hay_internet():
+            self.mongo.update_one("jugadores", query, nuevo_jugador.to_dict())
+        else:
+            self.guardarJson()
+            
         print(f"\nJugador actualizado correctamente")
     
     def eliminar_jugador(self):
         print("\n--- ELIMINAR JUGADOR ---")
         
-        if len(self.lista.items) == 0:
+        if len(self.items) == 0:
             print("No hay jugadores para eliminar.")
             return
         
         self.ver_jugadores()
         
         idx = int(input("\nSelecciona el numero del jugador a eliminar: "))
-        if idx < 0 or idx >= len(self.lista.items):
+        if idx < 0 or idx >= len(self.items):
             print("Indice invalido")
             return
         
-        jugador = self.lista.items[idx]
+        jugador = self.items[idx]
         confirmacion = input(f"Seguro que quieres eliminar a {jugador.nombre} {jugador.apellido}? (s/n): ")
         
         if confirmacion.lower() == 's':
-            self.lista.eliminar(idx)
+            query = jugador.to_dict()
+            self.eliminar(idx)
+            
+            if self.mongo.hay_internet():
+                self.mongo.delete_one("jugadores", query)
+            else:
+                self.guardarJson()
+                
             print(f"\n{jugador.nombre} {jugador.apellido} eliminado correctamente")
         else:
             print("Operacion cancelada")
