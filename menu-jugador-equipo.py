@@ -1,6 +1,7 @@
 import importlib
 from jugadores import Jugador
 from equipo import Equipos
+from mongo import Mongo, iniciar_tarea_periodica
 
 jugador_equipo = importlib.import_module("jugador-equipo")
 JugadorEquipo = jugador_equipo.JugadorEquipo
@@ -10,23 +11,33 @@ class MenuJugadorEquipo:
         self.lista = JugadorEquipo()
         self.equipos_registrados = Equipos()
         self.jugadores_pool = Jugador()
-        self.is_array =  self.jugadores_pool is None and self.equipos_registrados is None
+        self.mongo = Mongo()
+        iniciar_tarea_periodica(self.mongo)
 
-        if self.is_array:
-            self.cargar_datos_existentes()
+        self.cargar_datos_existentes()
     
     def cargar_datos_existentes(self):
         try:
-            self.lista = self.lista.leerJson()
+            # Sincronizar con Mongo
+            data = self.mongo.insert_general(self.lista, "jugadores-equipo.json", "jugadores_equipo", JugadorEquipo)
+            self.lista.items = data.items
+            
             print(f"Se cargaron {len(self.lista.items)} relaciones existentes.\n")
             for rel in self.lista.items:
                 self.equipos_registrados.agregar(rel.equipo)
                 for j in rel.jugadores.items:
                     self.jugadores_pool.agregar(j)
-        except FileNotFoundError:
-            print("No hay datos previos. Empezando desde cero.\n")
         except Exception as e:
-            print(f"Error: {e}\n")
+            print(f"Error cargando datos: {e}\n")
+            try:
+                self.lista = self.lista.leerJson()
+                # ... (resto de la logica de carga local si falla mongo)
+                for rel in self.lista.items:
+                    self.equipos_registrados.agregar(rel.equipo)
+                    for j in rel.jugadores.items:
+                        self.jugadores_pool.agregar(j)
+            except:
+                pass
     
     def menu(self):
         while True:
@@ -80,12 +91,31 @@ class MenuJugadorEquipo:
         
         if relacion_existente:
             print(f"\n{equipo.nombre} ya tiene una relacion. Agregando jugadores a la relacion existente...")
+            
+            query = relacion_existente.to_dict()
+            
             for j in jugadores.items:
                 relacion_existente.jugadores.agregar(j)
+            
+            exito_mongo = False
+            if self.mongo.hay_internet():
+                exito_mongo = self.mongo.update_one("jugadores_equipo", query, relacion_existente.to_dict()) > 0
+            
+            if not exito_mongo:
+                self.lista.guardarJson()
+                
             print(f"{len(jugadores.items)} jugadores agregados a {equipo.nombre}")
         else:
             relacion = JugadorEquipo(jugadores, equipo)
             self.lista.agregar(relacion)
+            
+            exito_mongo = False
+            if self.mongo.hay_internet():
+                exito_mongo = self.mongo.insert("jugadores_equipo", relacion.to_dict())
+            
+            if not exito_mongo:
+                self.lista.guardarJson()
+                
             print(f"\n{len(jugadores.items)} jugadores asignados a {equipo.nombre}")
 
     def agregar_jugadores_a_equipo(self):
@@ -105,6 +135,7 @@ class MenuJugadorEquipo:
             return
         
         relacion = self.lista.items[idx]
+        query = relacion.to_dict()
         
         print(f"\nAgregando jugadores a {relacion.equipo.nombre}")
         print("Jugadores actuales:")
@@ -118,6 +149,13 @@ class MenuJugadorEquipo:
             if j not in self.jugadores_pool.items:
                 self.jugadores_pool.agregar(j)
         
+        exito_mongo = False
+        if self.mongo.hay_internet():
+            exito_mongo = self.mongo.update_one("jugadores_equipo", query, relacion.to_dict()) > 0
+        
+        if not exito_mongo:
+            self.lista.guardarJson()
+            
         print(f"\n{len(nuevos_jugadores.items)} jugadores agregados a {relacion.equipo.nombre}")
     
     def editar_relacion(self):
@@ -136,6 +174,7 @@ class MenuJugadorEquipo:
         
         idx = idx - 1  # Ajustar porque en ver_relaciones se muestra desde 1
         relacion = self.lista.items[idx]
+        query = relacion.to_dict()
         
         print(f"\nEditando relacion de: {relacion.equipo.nombre}")
         print("\nQue deseas editar?")
@@ -149,6 +188,12 @@ class MenuJugadorEquipo:
             nuevo_equipo = self.seleccionar_equipo()
             if nuevo_equipo:
                 relacion.equipo = nuevo_equipo
+                exito_mongo = False
+                if self.mongo.hay_internet():
+                    exito_mongo = self.mongo.update_one("jugadores_equipo", query, relacion.to_dict()) > 0
+                
+                if not exito_mongo:
+                    self.lista.guardarJson()
                 print("Equipo actualizado correctamente")
         
         elif opcion == "2":
@@ -156,6 +201,12 @@ class MenuJugadorEquipo:
             nuevos_jugadores = self.seleccionar_jugadores()
             if len(nuevos_jugadores.items) > 0:
                 relacion.jugadores = nuevos_jugadores
+                exito_mongo = False
+                if self.mongo.hay_internet():
+                    exito_mongo = self.mongo.update_one("jugadores_equipo", query, relacion.to_dict()) > 0
+                
+                if not exito_mongo:
+                    self.lista.guardarJson()
                 print("Jugadores reemplazados correctamente")
         
         elif opcion == "3":
@@ -177,6 +228,12 @@ class MenuJugadorEquipo:
                     if 0 <= jidx < len(relacion.jugadores.items):
                         jugador = relacion.jugadores.items[jidx]
                         relacion.jugadores.eliminar(jidx)
+                        exito_mongo = False
+                        if self.mongo.hay_internet():
+                            exito_mongo = self.mongo.update_one("jugadores_equipo", query, relacion.to_dict()) > 0
+                        
+                        if not exito_mongo:
+                            self.lista.guardarJson()
                         print(f"{jugador.nombre} {jugador.apellido} eliminado")
                     else:
                         print("Indice invalido")
@@ -205,7 +262,16 @@ class MenuJugadorEquipo:
         confirmacion = input(f"Seguro que quieres eliminar la relacion de {relacion.equipo.nombre}? (s/n): ")
         
         if confirmacion.lower() == 's':
+            query = relacion.to_dict()
             self.lista.eliminar(idx)
+            
+            exito_mongo = False
+            if self.mongo.hay_internet():
+                exito_mongo = self.mongo.delete_one("jugadores_equipo", query) > 0
+            
+            if not exito_mongo:
+                self.lista.guardarJson()
+                
             print(f"\nRelacion de {relacion.equipo.nombre} eliminada correctamente")
         else:
             print("Operacion cancelada")
@@ -246,8 +312,20 @@ class MenuJugadorEquipo:
                 break
             
             apellido = input("Apellido: ").strip()
-            edad = int(input("Edad: "))
-            numero = int(input("Numero: "))
+            while True:
+                try:
+                    edad = int(input("Edad: "))
+                    break
+                except ValueError:
+                    print("Por favor ingresa un numero valido para la edad.")
+            
+            while True:
+                try:
+                    numero = int(input("Numero: "))
+                    break
+                except ValueError:
+                    print("Por favor ingresa un numero valido para el numero.")
+
             nacionalidad = input("Nacionalidad: ").strip()
             
             nuevo = Jugador(nombre, apellido, edad, numero, nacionalidad)
@@ -275,7 +353,12 @@ class MenuJugadorEquipo:
         print("\nDatos del equipo:")
         nombre = input("Nombre: ").strip()
         ciudad = input("Ciudad: ").strip()
-        fundacion = int(input("Fundacion: "))
+        while True:
+            try:
+                fundacion = int(input("Fundacion: "))
+                break
+            except ValueError:
+                print("Por favor ingresa un año valido.")
         estadio = input("Estadio: ").strip()
         liga = input("Liga: ").strip()
         entrenador = input("Entrenador: ").strip()
